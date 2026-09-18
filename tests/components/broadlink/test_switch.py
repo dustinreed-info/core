@@ -1,5 +1,10 @@
 """Tests for Broadlink switches."""
 
+from datetime import timedelta
+
+from freezegun.api import FrozenDateTimeFactory
+import pytest
+
 from homeassistant.components.broadlink.const import DOMAIN
 from homeassistant.components.switch import (
     DOMAIN as SWITCH_DOMAIN,
@@ -9,8 +14,41 @@ from homeassistant.components.switch import (
 from homeassistant.const import ATTR_FRIENDLY_NAME, STATE_OFF, STATE_ON, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.setup import async_setup_component
 
 from . import get_device
+
+from tests.common import async_fire_time_changed
+
+IR_PACKET = "JgAGAAEBAQE="
+
+
+async def test_yaml_rm_switch_does_not_attach_device(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test a YAML-defined RM switch works without attaching the device."""
+    device = get_device("Entrance")
+    # The YAML platform is not ready until the device's config entry is set up.
+    assert await async_setup_component(
+        hass,
+        SWITCH_DOMAIN,
+        {
+            SWITCH_DOMAIN: {
+                "platform": DOMAIN,
+                "mac": device.mac,
+                "switches": [{"name": "Patio heater", "command_on": IR_PACKET}],
+            }
+        },
+    )
+    await device.setup_entry(hass)
+    freezer.tick(timedelta(minutes=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("switch.patio_heater") is not None
+    assert "attempts to attach a device" not in caplog.text
 
 
 async def test_switch_setup_works(

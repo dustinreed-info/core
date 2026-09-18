@@ -185,6 +185,12 @@ class BroadlinkRMSwitch(BroadlinkSwitch):
         )
         self._attr_name = config[CONF_NAME]
 
+    @property
+    @override
+    def device_info(self) -> None:
+        """Return None; YAML switches have no unique ID to link a device to."""
+        return None
+
     @override
     async def _async_send_packet(self, packet):
         """Send a packet to the device."""

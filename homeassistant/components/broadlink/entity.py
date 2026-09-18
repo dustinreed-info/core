@@ -59,7 +59,7 @@ class BroadlinkEntity(Entity):
 
     @property
     @override
-    def device_info(self) -> DeviceInfo:
+    def device_info(self) -> DeviceInfo | None:
         """Return device info."""
         device = self._device
 
