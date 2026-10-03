@@ -388,9 +388,68 @@ async def test_cct_light(hass: HomeAssistant, mock_wled: MagicMock) -> None:
     assert mock_wled.segment.call_count == 1
     mock_wled.segment.assert_called_with(
         cct=130,
+        color_primary=(0, 0, 0, 255),
         on=True,
         segment_id=0,
     )
+
+
+@pytest.mark.parametrize(
+    ("device_fixture", "entity_id", "color_mode", "white"),
+    [
+        pytest.param(
+            "rgbww",
+            "light.wled_rgbww_light",
+            ColorMode.RGBW,
+            (0, 0, 0, 255),
+            id="rgb_white_cct",
+        ),
+        pytest.param(
+            "rgb_cct",
+            "light.wled_rgb_cct_light",
+            ColorMode.RGB,
+            (255, 255, 255),
+            id="rgb_cct_auto_white",
+        ),
+    ],
+)
+async def test_color_and_cct_light(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    mock_wled: MagicMock,
+    entity_id: str,
+    color_mode: ColorMode,
+    white: tuple[int, ...],
+) -> None:
+    """Test lights with a color mode and CCT, such as WS2805 RGB+CCT strips."""
+    assert (state := hass.states.get(entity_id))
+    assert set(state.attributes[ATTR_SUPPORTED_COLOR_MODES]) == {
+        ColorMode.COLOR_TEMP,
+        color_mode,
+    }
+    # The fixture shows a red color, so the color mode is active.
+    assert state.attributes[ATTR_COLOR_MODE] == color_mode
+
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: entity_id, ATTR_COLOR_TEMP_KELVIN: 4321},
+        blocking=True,
+    )
+    mock_wled.segment.assert_called_with(
+        cct=130, color_primary=white, on=True, segment_id=0
+    )
+
+    # Once WLED reports the white color, the light is in color temperature mode.
+    segment = mock_wled.update.return_value.state.segments[0]
+    segment.color.primary = white
+    segment.cct = 130
+    freezer.tick(SCAN_INTERVAL)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert (state := hass.states.get(entity_id))
+    assert state.attributes[ATTR_COLOR_MODE] == ColorMode.COLOR_TEMP
+    assert state.attributes[ATTR_COLOR_TEMP_KELVIN] == 4311
 
 
 @pytest.mark.parametrize("device_fixture", ["rgb_single_segment"])

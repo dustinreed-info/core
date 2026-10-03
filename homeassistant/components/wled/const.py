@@ -53,11 +53,11 @@ LIGHT_CAPABILITIES_COLOR_MODE_MAPPING: dict[LightCapability, list[ColorMode]] = 
         ColorMode.COLOR_TEMP,
     ],
     LightCapability.RGB_COLOR | LightCapability.COLOR_TEMPERATURE: [
-        # Technically this is RGBWW but wled does not
-        # support RGBWW colors (with warm and cold white
-        # separately)
-        # but rather RGB + CCT which does not have a direct mapping in HA
+        # RGB + CCT with WLED deriving the white channels from RGB (auto white).
+        # WLED has no separate warm/cold white colors, so this is exposed as
+        # RGB plus a color temperature mode that drives the whites.
         ColorMode.RGB,
+        ColorMode.COLOR_TEMP,
     ],
     LightCapability.WHITE_CHANNEL | LightCapability.COLOR_TEMPERATURE: [
         ColorMode.COLOR_TEMP,

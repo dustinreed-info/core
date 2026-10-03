@@ -169,6 +169,51 @@ class WLEDSegmentLight(WLEDEntity, LightEntity):
         ):
             self._attr_color_mode = color_modes[0]
             self._attr_supported_color_modes = set(color_modes)
+            self._infer_color_mode()
+
+    @property
+    def _color_mode_with_temp(self) -> ColorMode | None:
+        """Return the color mode paired with COLOR_TEMP, if the light has both."""
+        modes = self._attr_supported_color_modes or set()
+        if ColorMode.COLOR_TEMP not in modes:
+            return None
+        if ColorMode.RGBW in modes:
+            return ColorMode.RGBW
+        if ColorMode.RGB in modes:
+            return ColorMode.RGB
+        return None
+
+    @callback
+    def _infer_color_mode(self) -> None:
+        """Set the active color mode from the segment's current color.
+
+        For lights with both a color mode and CCT, WLED does not report which
+        one is in use. A primary color that is white only (just the white
+        channel, or equal RGB when WLED derives white from RGB) means color
+        temperature is active.
+        """
+        if (color_mode := self._color_mode_with_temp) is None:
+            return
+        segment = self.coordinator.data.state.segments.get(self._segment)
+        if segment is None or not (color := segment.color):
+            return
+        red, green, blue = color.primary[:3]
+        white = color.primary[3] if len(color.primary) > 3 else 0
+        if not (red or green or blue or white):
+            # Black says nothing about the mode; keep the current one.
+            return
+        if color_mode is ColorMode.RGBW:
+            is_white = not (red or green or blue)
+        else:
+            is_white = red == green == blue
+        self._attr_color_mode = ColorMode.COLOR_TEMP if is_white else color_mode
+
+    @callback
+    @override
+    def _handle_coordinator_update(self) -> None:
+        """Update attributes when the coordinator updates."""
+        self._infer_color_mode()
+        super()._handle_coordinator_update()
 
     @property
     @override
@@ -279,6 +324,13 @@ class WLEDSegmentLight(WLEDEntity, LightEntity):
             data[ATTR_CCT] = kelvin_to_255(
                 kwargs[ATTR_COLOR_TEMP_KELVIN], COLOR_TEMP_K_MIN, COLOR_TEMP_K_MAX
             )
+            # CCT only sets the warm/cold balance of the white channels; switch
+            # the primary color to white so a previous color does not stay on.
+            color_mode = self._color_mode_with_temp
+            if color_mode is ColorMode.RGBW:
+                data[ATTR_COLOR_PRIMARY] = (0, 0, 0, 255)
+            elif color_mode is ColorMode.RGB:
+                data[ATTR_COLOR_PRIMARY] = (255, 255, 255)
 
         if ATTR_TRANSITION in kwargs:
             # WLED uses 100ms per unit, so 10 = 1 second.
